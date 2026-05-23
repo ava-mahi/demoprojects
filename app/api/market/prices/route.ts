@@ -4,18 +4,16 @@ import { prisma } from '@/lib/prisma';
 type AssetData = {
   symbol: string;
   name: string;
-  category: string;
 };
 
 // GET /api/market/prices - Get current prices for all assets
 export async function GET() {
   try {
     const assets = await prisma.asset.findMany({
-      where: { active: true },
+      where: { enabled: true },
       select: {
         symbol: true,
         name: true,
-        category: true,
       },
     });
 
@@ -23,7 +21,6 @@ export async function GET() {
     const prices = assets.map((asset: AssetData) => ({
       symbol: asset.symbol,
       name: asset.name,
-      category: asset.category,
       price: generateMockPrice(asset.symbol),
       change24h: (Math.random() * 10 - 5).toFixed(2),
       timestamp: new Date().toISOString(),
