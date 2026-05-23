@@ -6,9 +6,9 @@
 export function getSocket() {
   // Return a mock socket object for compatibility
   return {
-    on: () => {},
-    off: () => {},
-    emit: () => {},
+    on: (..._args: any[]) => {},
+    off: (..._args: any[]) => {},
+    emit: (..._args: any[]) => {},
     disconnect: () => {},
   };
 }
