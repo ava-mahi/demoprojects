@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSocket } from '@/lib/socket-client';
 import { useMarket } from '@/store/market';
 import { cn, formatMoney, formatPrice, timeAgo } from '@/lib/utils';
 import { useAuth } from '@/store/auth';
@@ -32,10 +31,7 @@ export function OpenTrades({ refresh }: { refresh?: number }) {
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
-    const s = getSocket();
-    const onEvent = (p: any) => { if (p?.type === 'trade:result') load(); };
-    s.on('event', onEvent);
-    return () => { clearInterval(t); s.off('event', onEvent); };
+    return () => { clearInterval(t); };
     // eslint-disable-next-line
   }, [mode, tab]);
 

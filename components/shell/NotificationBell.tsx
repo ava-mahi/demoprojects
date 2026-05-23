@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
-import { getSocket } from '@/lib/socket-client';
 import { timeAgo } from '@/lib/utils';
 
 type Notif = { id: string; kind: string; title: string; body: string | null; read: boolean; createdAt: string };
@@ -20,11 +19,6 @@ export function NotificationBell() {
 
   useEffect(() => {
     load();
-    const s = getSocket();
-    const onEvent = () => load();
-    s.on('event', onEvent);
-    s.on('balance', onEvent);
-    return () => { s.off('event', onEvent); s.off('balance', onEvent); };
   }, []);
 
   const unread = items.filter((i) => !i.read).length;
