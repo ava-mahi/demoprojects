@@ -4,6 +4,14 @@ const nextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: '2mb' },
   },
+  transpilePackages: ['lucide-react'],
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': __dirname,
+    };
+    return config;
+  },
   async headers() {
     return [
       {
