@@ -1,12 +1,13 @@
 services:
   - type: web
     name: nova-trade-web
-    env: node
+    runtime: node
     region: oregon
     plan: free
     branch: main
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && npx prisma generate && npm run build
     startCommand: npm run dev
+    healthCheckPath: /
     envVars:
       - key: NODE_ENV
         value: production
@@ -32,3 +33,4 @@ databases:
     plan: free
     databaseName: novatrade
     user: novatrade
+    region: oregon
