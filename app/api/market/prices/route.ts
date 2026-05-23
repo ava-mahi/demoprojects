@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+type AssetData = {
+  symbol: string;
+  name: string;
+  category: string;
+};
+
 // GET /api/market/prices - Get current prices for all assets
 export async function GET() {
   try {
@@ -14,7 +20,7 @@ export async function GET() {
     });
 
     // Generate mock prices (in production, this would come from a real data source)
-    const prices = assets.map((asset: { symbol: string; name: string; category: string }) => ({
+    const prices = assets.map((asset: AssetData) => ({
       symbol: asset.symbol,
       name: asset.name,
       category: asset.category,
