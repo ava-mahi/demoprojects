@@ -1,0 +1,425 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountMode {
+  DEMO
+  LIVE
+}
+
+enum AssetKind {
+  FOREX
+  CRYPTO
+  STOCK
+  COMMODITY
+}
+
+enum TradeKind {
+  BINARY
+  SPOT
+}
+
+enum BinaryDirection {
+  UP
+  DOWN
+}
+
+enum TradeStatus {
+  OPEN
+  WON
+  LOST
+  TIE
+  CLOSED
+  CANCELLED
+}
+
+enum TxType {
+  DEPOSIT
+  WITHDRAWAL
+  TRADE_STAKE
+  TRADE_PAYOUT
+  BONUS
+  ADJUSTMENT
+  FEE
+}
+
+enum TxStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum NotificationKind {
+  TRADE
+  DEPOSIT
+  WITHDRAWAL
+  BONUS
+  SYSTEM
+}
+
+enum ForceOutcome {
+  NONE
+  WIN
+  LOSE
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  name          String?
+  role          Role     @default(USER)
+  blocked       Boolean  @default(false)
+  suspended     Boolean  @default(false)
+  emailVerified Boolean  @default(false)
+  displayCurrency String @default("USD")
+  theme         String   @default("dark") // "dark" | "midnight" | "light"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  trades          Trade[]
+  positions       Position[]
+  transactions    Transaction[]
+  depositReqs     DepositRequest[]
+  withdrawalReqs  WithdrawalRequest[]
+  notifications   Notification[]
+  control         UserTradingControl?
+  bonuses         Bonus[]
+  adminLogs       AdminLog[] @relation("AdminActor")
+  watchlist       WatchlistItem[]
+  alerts          PriceAlert[]
+  riskControl     RiskControl?
+  tradeNotes      TradeNote[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  refreshHash  String
+  userAgent    String?
+  ip           String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id        String      @id @default(cuid())
+  userId    String
+  mode      AccountMode
+  currency  String      @default("USD")
+  balance   Decimal     @default(0) @db.Decimal(20, 8)
+  createdAt DateTime    @default(now())
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  trades       Trade[]
+  positions    Position[]
+
+  @@unique([userId, mode])
+}
+
+model Asset {
+  id        String    @id @default(cuid())
+  symbol    String    @unique
+  name      String
+  kind      AssetKind
+  enabled   Boolean   @default(true)
+  payoutPct Int       @default(85) // for binary mode
+  feed      String    // "binance" | "sim"
+  feedSym   String?   // e.g. BTCUSDT for binance
+  priceHint Float     @default(100)
+  volatility Float    @default(0.002)
+  drift     Float     @default(0) // simulated drift per tick
+  precision Int       @default(4)
+  createdAt DateTime  @default(now())
+  trades    Trade[]
+  positions Position[]
+  candles   Candle[]
+  watchedBy WatchlistItem[]
+  alerts    PriceAlert[]
+}
+
+model Candle {
+  id        String   @id @default(cuid())
+  assetId   String
+  tf        String   // "1m" | "5m" | "15m"
+  openTime  DateTime
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, tf, openTime])
+  @@index([assetId, tf, openTime])
+}
+
+model Trade {
+  id         String           @id @default(cuid())
+  userId     String
+  accountId  String
+  assetId    String
+  kind       TradeKind        @default(BINARY)
+  direction  BinaryDirection?
+  stake      Decimal          @db.Decimal(20, 8)
+  payoutPct  Int              @default(85)
+  openPrice  Float
+  closePrice Float?
+  expiresAt  DateTime?
+  payout     Decimal?         @db.Decimal(20, 8)
+  status     TradeStatus      @default(OPEN)
+  forced     ForceOutcome     @default(NONE)
+  createdAt  DateTime         @default(now())
+  resolvedAt DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId], references: [id])
+  note    TradeNote?
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model Position {
+  id         String   @id @default(cuid())
+  userId     String
+  accountId  String
+  assetId    String
+  side       BinaryDirection // UP=long, DOWN=short
+  qty        Decimal  @db.Decimal(20, 8)
+  openPrice  Float
+  closePrice Float?
+  pnl        Decimal? @db.Decimal(20, 8)
+  status     TradeStatus @default(OPEN)
+  createdAt  DateTime @default(now())
+  closedAt   DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId], references: [id])
+
+  @@index([userId, status])
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  userId    String
+  accountId String?
+  type      TxType
+  status    TxStatus @default(COMPLETED)
+  amount    Decimal  @db.Decimal(20, 8)
+  currency  String   @default("USD")
+  ref       String?  // related trade id, deposit id, etc
+  note      String?
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id])
+
+  @@index([userId, createdAt])
+}
+
+model PaymentMethod {
+  id          String   @id @default(cuid())
+  name        String
+  kind        String   // "crypto" | "card" | "bank"
+  network     String?  // "TRC20", "ERC20", etc
+  address     String?  // wallet address
+  enabled     Boolean  @default(true)
+  minAmount   Decimal  @default(10) @db.Decimal(20, 8)
+  maxAmount   Decimal  @default(100000) @db.Decimal(20, 8)
+  feePct      Float    @default(0)
+  instructions String?
+  createdAt   DateTime @default(now())
+
+  deposits    DepositRequest[]
+  withdrawals WithdrawalRequest[]
+}
+
+model DepositRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  methodId  String
+  amount    Decimal  @db.Decimal(20, 8)
+  currency  String   @default("USD")
+  txHash    String?
+  status    TxStatus @default(PENDING)
+  note      String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method PaymentMethod @relation(fields: [methodId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model WithdrawalRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  methodId  String
+  amount    Decimal  @db.Decimal(20, 8)
+  currency  String   @default("USD")
+  destination String
+  status    TxStatus @default(PENDING)
+  note      String?
+  createdAt DateTime @default(now())
+  decidedAt DateTime?
+
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  method PaymentMethod @relation(fields: [methodId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  kind      NotificationKind
+  title     String
+  body      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read, createdAt])
+}
+
+model UserTradingControl {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  winRatePct    Int          @default(50) // override 0..100
+  forceNext     ForceOutcome @default(NONE)
+  forceCount    Int          @default(0)
+  enabled       Boolean      @default(false)
+  updatedAt     DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Bonus {
+  id        String   @id @default(cuid())
+  userId    String?
+  code      String?  @unique
+  amount    Decimal  @db.Decimal(20, 8)
+  currency  String   @default("USD")
+  reason    String?
+  appliedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Currency {
+  code   String  @id // "USD","EUR","PKR"
+  name   String
+  symbol String
+  rateToUsd Float @default(1) // 1 unit = X USD
+  enabled Boolean @default(true)
+}
+
+model AdminLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  action    String
+  target    String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  actor User @relation("AdminActor", fields: [actorId], references: [id])
+
+  @@index([actorId, createdAt])
+}
+
+model Setting {
+  key   String @id
+  value Json
+}
+
+enum AlertDirection {
+  ABOVE
+  BELOW
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  assetId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId])
+  @@index([userId])
+}
+
+model PriceAlert {
+  id        String         @id @default(cuid())
+  userId    String
+  assetId   String
+  direction AlertDirection
+  price     Float
+  fired     Boolean        @default(false)
+  firedAt   DateTime?
+  createdAt DateTime       @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([userId, fired])
+  @@index([assetId, fired])
+}
+
+model RiskControl {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  dailyLossLimit  Decimal? @db.Decimal(20, 8)
+  maxStake        Decimal? @db.Decimal(20, 8)
+  cooldownSec     Int?     // seconds between trades
+  lastTradeAt     DateTime?
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TradeNote {
+  id        String   @id @default(cuid())
+  tradeId   String   @unique
+  userId    String
+  note      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Broadcast {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  segment   String?  // null=all, "DEMO", "LIVE", "ADMIN"
+  sentAt    DateTime @default(now())
+}
